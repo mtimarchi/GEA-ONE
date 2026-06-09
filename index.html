@@ -678,8 +678,8 @@ document.querySelectorAll('.model-opt').forEach(opt => {
   });
 });
 
-// ── Construir contexto desde la planilla ──────────────────────
-function buildContext() {
+// ── Construir contexto desde la planilla (compacto) ──────────
+function buildContext(pregunta) {
   const today = new Date().toLocaleDateString('es-AR');
   let ctx = `Fecha de hoy: ${today}\n\n`;
 
@@ -687,11 +687,16 @@ function buildContext() {
   const incTab    = Object.keys(sheets).find(n => /inc|horario/i.test(n));
   const tarifTab  = Object.keys(sheets).find(n => /tarifa/i.test(n));
 
-  if (semanaTab) {
+  // Detectar si la pregunta es sobre tarifas → mandar solo tarifas
+  const esTarifa = /tarifa|precio|costo|cuánto sale|cuanto sale/i.test(pregunta);
+  // Detectar si es sobre INC/horarios → mandar solo INC
+  const esHorario = /patente|chofer|travel|horario|citaci|llegada|salida|status|estado/i.test(pregunta);
+
+  if (!esTarifa && semanaTab) {
     ctx += `=== ${semanaTab} ===\n`;
     sheets[semanaTab]
       .filter(r => r.some(c => String(c).trim()))
-      .slice(0, 200)
+      .slice(0, 80)  // reducido de 200 a 80
       .forEach(r => {
         const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
         if (line) ctx += line + '\n';
@@ -699,32 +704,30 @@ function buildContext() {
     ctx += '\n';
   }
 
-  if (incTab) {
-    ctx += `=== ${incTab} (últimas 60 filas) ===\n`;
+  if (esHorario && incTab) {
+    ctx += `=== ${incTab} ===\n`;
     ctx += `[Proveedor|OC|Fecha|Chofer|Patente|TravelID|Origen|Destino|Citación|Pres.Real|Salida Sist|Salida Real|Llegada|Llegada Real|Status|Obs]\n`;
     sheets[incTab]
+      .filter(r => r.some(c => String(c).trim()))
+      .slice(0, 30)  // reducido de 60 a 30
+      .forEach(r => {
+        const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
+        if (line) ctx += line + '\n';
+      });
+    ctx += '\n';
+  }
+
+  if (esTarifa && tarifTab) {
+    ctx += `=== ${tarifTab} ===\n`;
+    sheets[tarifTab]
       .filter(r => r.some(c => String(c).trim()))
       .slice(0, 60)
       .forEach(r => {
         const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
         if (line) ctx += line + '\n';
       });
-    ctx += '\n';
   }
 
-  if (tarifTab) {
-    ctx += `=== ${tarifTab} ===\n`;
-    sheets[tarifTab]
-      .filter(r => r.some(c => String(c).trim()))
-      .slice(0, 80)
-      .forEach(r => {
-        const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
-        if (line) ctx += line + '\n';
-      });
-  }
-
-  return ctx;
-}
 
 // ── Iniciar bot ───────────────────────────────────────────────
 async function startBot() {
@@ -764,7 +767,7 @@ window.startBot = startBot;
 
 // ── Llamada a Groq API ────────────────────────────────────────
 async function callGroq(userMsg, convHistory) {
-  const context = buildContext();
+  const context = buildContext(text);
   const systemPrompt = `Sos el asistente de operaciones de GEA Logistics para Paquetería / Mercado Libre.
 Respondé siempre en español, de forma concisa y directa. Sin markdown ni asteriscos.
 Usá saltos de línea para organizar. Máximo 6 líneas salvo que sea un listado necesario.
