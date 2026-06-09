@@ -696,7 +696,7 @@ function buildContext(pregunta) {
     ctx += `=== ${semanaTab} ===\n`;
     sheets[semanaTab]
       .filter(r => r.some(c => String(c).trim()))
-      .slice(0, 80)  // reducido de 200 a 80
+      .slice(0, 40)  // reducido de 200 a 40
       .forEach(r => {
         const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
         if (line) ctx += line + '\n';
@@ -709,7 +709,7 @@ function buildContext(pregunta) {
     ctx += `[Proveedor|OC|Fecha|Chofer|Patente|TravelID|Origen|Destino|Citación|Pres.Real|Salida Sist|Salida Real|Llegada|Llegada Real|Status|Obs]\n`;
     sheets[incTab]
       .filter(r => r.some(c => String(c).trim()))
-      .slice(0, 30)  // reducido de 60 a 30
+      .slice(0, 20)  // reducido de 60 a 20
       .forEach(r => {
         const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
         if (line) ctx += line + '\n';
@@ -721,13 +721,17 @@ function buildContext(pregunta) {
     ctx += `=== ${tarifTab} ===\n`;
     sheets[tarifTab]
       .filter(r => r.some(c => String(c).trim()))
-      .slice(0, 60)
+      .slice(0, 40)
       .forEach(r => {
         const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
         if (line) ctx += line + '\n';
       });
   }
 
+  // Límite duro: máximo 3000 caracteres
+  if (ctx.length > 3000) ctx = ctx.substring(0, 3000) + '\n[...truncado]';
+  return ctx;
+}
 
 // ── Iniciar bot ───────────────────────────────────────────────
 async function startBot() {
@@ -738,9 +742,9 @@ async function startBot() {
   document.getElementById('loadingScreen').style.display = 'flex';
   setStatus('conectando...', 'busy');
 
-  // Test rápido de conexión
+  // Test rápido de conexión (sin contexto de planilla)
   try {
-    const test = await callGroq('Respondé solo: ok', []);
+    const test = await callGroqSimple('Respondé solo la palabra: ok');
     if (!test) throw new Error('Sin respuesta');
 
     document.getElementById('loadingScreen').style.display    = 'none';
@@ -764,6 +768,28 @@ async function startBot() {
   }
 }
 window.startBot = startBot;
+
+// ── Test simple sin contexto ──────────────────────────────────
+async function callGroqSimple(msg) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_KEY}`
+    },
+    body: JSON.stringify({
+      model: MODEL_ID,
+      messages: [{ role: 'user', content: msg }],
+      max_tokens: 10
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return data.choices[0].message.content;
+}
 
 // ── Llamada a Groq API ────────────────────────────────────────
 async function callGroq(userMsg, convHistory) {
