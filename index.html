@@ -793,7 +793,7 @@ async function callGroqSimple(msg) {
 
 // ── Llamada a Groq API ────────────────────────────────────────
 async function callGroq(userMsg, convHistory) {
-  const context = buildContext(text);
+  const context = buildContext(userMsg);
   const systemPrompt = `Sos el asistente de operaciones de GEA Logistics para Paquetería / Mercado Libre.
 Respondé siempre en español, de forma concisa y directa. Sin markdown ni asteriscos.
 Usá saltos de línea para organizar. Máximo 6 líneas salvo que sea un listado necesario.
