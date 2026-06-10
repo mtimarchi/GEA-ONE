@@ -588,10 +588,11 @@ header {
 
 <div id="suggestions" style="display:none">
   <div class="sugg" onclick="ask(this.textContent)">¿Cuántos viajes hay hoy?</div>
-  <div class="sugg" onclick="ask(this.textContent)">Viajes de media distancia</div>
-  <div class="sugg" onclick="ask(this.textContent)">¿Cuántos adicionales cubiertos?</div>
-  <div class="sugg" onclick="ask(this.textContent)">Resumen de cancelaciones</div>
-  <div class="sugg" onclick="ask(this.textContent)">Conteo total de la semana</div>
+  <div class="sugg" onclick="ask(this.textContent)">¿Está libre la sala a las 15hs?</div>
+  <div class="sugg" onclick="ask(this.textContent)">¿Comarsa tiene la cláusula firmada?</div>
+  <div class="sugg" onclick="ask(this.textContent)">¿Cuántos adicionales cubiertos hubo?</div>
+  <div class="sugg" onclick="ask(this.textContent)">Tarifas a Córdoba</div>
+  <div class="sugg" onclick="ask(this.textContent)">Unidades activas de GT Logistics</div>
 </div>
 
 <div id="inputArea" style="display:none">
@@ -678,58 +679,97 @@ document.querySelectorAll('.model-opt').forEach(opt => {
   });
 });
 
-// ── Construir contexto desde la planilla (compacto) ──────────
+// ── Detectar solapas ─────────────────────────────────────────
+function findTab(pattern) {
+  return Object.keys(sheets).find(n => pattern.test(n));
+}
+
+function sheetRows(tab, limit) {
+  if (!tab) return '';
+  return sheets[tab]
+    .filter(r => r.some(c => String(c).trim()))
+    .slice(0, limit)
+    .map(r => r.map(c => String(c).trim()).filter(Boolean).join(' | '))
+    .filter(Boolean)
+    .join('\n');
+}
+
+// ── Construir contexto inteligente según la pregunta ─────────
 function buildContext(pregunta) {
+  const p = pregunta.toLowerCase();
   const today = new Date().toLocaleDateString('es-AR');
   let ctx = `Fecha de hoy: ${today}\n\n`;
 
-  const semanaTab = Object.keys(sheets).find(n => /semana/i.test(n));
-  const incTab    = Object.keys(sheets).find(n => /inc|horario/i.test(n));
-  const tarifTab  = Object.keys(sheets).find(n => /tarifa/i.test(n));
+  // Detectores de intención
+  const esSemana    = /viaje|semana|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|hoy|mañana|manana|adicional|cancelac|conteo|local|media distancia/i.test(p);
+  const esInc       = /patente|chofer|travel|horario|citaci|llegada|salida|status|estado|operaci|fecha.*op|op.*fecha/i.test(p);
+  const esTarifa    = /tarifa|precio|costo|cuánto sale|cuanto sale|tarifa.*ml|ml.*tarifa/i.test(p);
+  const esCliente   = /cliente|crédito|credito|pago|límite|limite|condici/i.test(p);
+  const esClausula  = /cláusula|clausula|exenci|eximici|firmad/i.test(p);
+  const esTarifaCli = /actualizaci|próxima.*tarifa|tarifa.*próxima|última.*tarifa|tarifa.*última|aumento/i.test(p);
+  const esSala      = /sala|reuni|reserva|disponible|ocupad|horario.*sala|sala.*horario/i.test(p);
+  const esUnidad    = /unidad|ploteada|dominio|semi|camion|camión|furgon|furgón|flota/i.test(p);
+  const esSatelital = /satelital|satélite|usuario.*patente|patente.*usuario|contraseña|clave.*patente/i.test(p);
 
-  // Detectar si la pregunta es sobre tarifas → mandar solo tarifas
-  const esTarifa = /tarifa|precio|costo|cuánto sale|cuanto sale/i.test(pregunta);
-  // Detectar si es sobre INC/horarios → mandar solo INC
-  const esHorario = /patente|chofer|travel|horario|citaci|llegada|salida|status|estado/i.test(pregunta);
+  // Si no detecta nada específico, mandar semana por defecto
+  const nada = ![esSemana,esInc,esTarifa,esCliente,esClausula,esTarifaCli,esSala,esUnidad,esSatelital].some(Boolean);
 
-  if (!esTarifa && semanaTab) {
-    ctx += `=== ${semanaTab} ===\n`;
-    sheets[semanaTab]
-      .filter(r => r.some(c => String(c).trim()))
-      .slice(0, 40)  // reducido de 200 a 40
-      .forEach(r => {
-        const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
-        if (line) ctx += line + '\n';
-      });
-    ctx += '\n';
+  const semanaTab   = findTab(/semana/i);
+  const incTab      = findTab(/inc.*horario|horario.*inc|inc\+/i) || findTab(/inc/i);
+  const tarifaTab   = findTab(/tarifa.*ml|ml.*tarifa|tarifas ml/i) || findTab(/tarifa/i);
+  const clienteTab  = findTab(/cliente/i);
+  const clausulaTab = findTab(/clausula|cláusula|exenci/i);
+  const tarifaCliTab= findTab(/actualizac.*tarifa|tarifa.*actualizac/i);
+  const salaTab     = findTab(/sala.*reuni|reuni.*sala|sala/i);
+  const unidadTab   = findTab(/unidad.*plot|plot.*unidad|unidad/i);
+  const satelitalTab= findTab(/satelital/i);
+
+  if ((esSemana || nada) && semanaTab) {
+    ctx += `=== ${semanaTab} ===\n` + sheetRows(semanaTab, 50) + '\n\n';
   }
-
-  if (esHorario && incTab) {
+  if (esInc && incTab) {
     ctx += `=== ${incTab} ===\n`;
     ctx += `[Proveedor|OC|Fecha|Chofer|Patente|TravelID|Origen|Destino|Citación|Pres.Real|Salida Sist|Salida Real|Llegada|Llegada Real|Status|Obs]\n`;
-    sheets[incTab]
-      .filter(r => r.some(c => String(c).trim()))
-      .slice(0, 20)  // reducido de 60 a 20
-      .forEach(r => {
-        const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
-        if (line) ctx += line + '\n';
-      });
-    ctx += '\n';
+    ctx += sheetRows(incTab, 25) + '\n\n';
+  }
+  if (esTarifa && tarifaTab) {
+    ctx += `=== ${tarifaTab} ===\n`;
+    ctx += `[Destino|Tarifa Compra Semi|Tarifa Venta Semi]\n`;
+    ctx += sheetRows(tarifaTab, 50) + '\n\n';
+  }
+  if (esCliente && clienteTab) {
+    ctx += `=== ${clienteTab} ===\n`;
+    ctx += `[Cliente|Condición pago|Límite crédito|Crédito disponible|Moneda|Contacto|Email|Obs]\n`;
+    ctx += sheetRows(clienteTab, 40) + '\n\n';
+  }
+  if (esClausula && clausulaTab) {
+    ctx += `=== ${clausulaTab} ===\n`;
+    ctx += `[Cliente|Firmado|Fecha firma|Vencimiento|Resp.GEA|Resp.Cliente|Obs]\n`;
+    ctx += sheetRows(clausulaTab, 40) + '\n\n';
+  }
+  if (esTarifaCli && tarifaCliTab) {
+    ctx += `=== ${tarifaCliTab} ===\n`;
+    ctx += `[Cliente|Última actualización|% aplicado|Próxima actualización|% estimado|Responsable|Obs]\n`;
+    ctx += sheetRows(tarifaCliTab, 40) + '\n\n';
+  }
+  if (esSala && salaTab) {
+    ctx += `=== ${salaTab} ===\n`;
+    ctx += `[Fecha|Hora inicio|Hora fin|Responsable|Descripción|Status]\n`;
+    ctx += sheetRows(salaTab, 40) + '\n\n';
+  }
+  if (esUnidad && unidadTab) {
+    ctx += `=== ${unidadTab} ===\n`;
+    ctx += `[Proveedor|Tipo unidad|Dominio|Marca|Modelo|Año|Estado|Obs]\n`;
+    ctx += sheetRows(unidadTab, 50) + '\n\n';
+  }
+  if (esSatelital && satelitalTab) {
+    ctx += `=== ${satelitalTab} ===\n`;
+    ctx += `[Patente|Proveedor|Marca satelital|Usuario|Contraseña]\n`;
+    ctx += sheetRows(satelitalTab, 50) + '\n\n';
   }
 
-  if (esTarifa && tarifTab) {
-    ctx += `=== ${tarifTab} ===\n`;
-    sheets[tarifTab]
-      .filter(r => r.some(c => String(c).trim()))
-      .slice(0, 40)
-      .forEach(r => {
-        const line = r.map(c => String(c).trim()).filter(Boolean).join(' | ');
-        if (line) ctx += line + '\n';
-      });
-  }
-
-  // Límite duro: máximo 3000 caracteres
-  if (ctx.length > 3000) ctx = ctx.substring(0, 3000) + '\n[...truncado]';
+  // Límite duro: máximo 3500 caracteres
+  if (ctx.length > 3500) ctx = ctx.substring(0, 3500) + '\n[...truncado]';
   return ctx;
 }
 
@@ -798,16 +838,22 @@ async function callGroq(userMsg, convHistory) {
 Respondé siempre en español, de forma concisa y directa. Sin markdown ni asteriscos.
 Usá saltos de línea para organizar. Máximo 6 líneas salvo que sea un listado necesario.
 
-Sabés responder sobre:
-- Viajes del día o de la semana (locales y media distancia separados)
-- Horarios de citación, salida y llegada
-- Estado de operaciones (OK / ADICIONAL CUBIERTO / ADICIONAL NO CUBIERTO / BACK UP / CANCELADO...)
-- Adicionales cubiertos (contá solo los que dicen "ADICIONAL CUBIERTO")
-- Cancelaciones agrupadas por tipo
-- Conteo total semanal
-- Tarifas por destino
+Tenés acceso a estas fuentes de datos:
+- Semana actual: viajes locales y media distancia, estados, adicionales, cancelaciones
+- INC + Horarios: operaciones con patente, chofer, horarios de citación/llegada/salida y status
+- Tarifas ML: tarifas de compra y venta por destino
+- Clientes: condición de pago, límite de crédito y crédito disponible
+- Clausula Exencion: si cada cliente tiene la cláusula de exención firmada y su vencimiento
+- Actualizacion Tarifas: última y próxima actualización de tarifas por cliente
+- Sala Reuniones: reservas de la sala por fecha y horario (Status: Ocupada / Disponible)
+- Unidades Ploteadas: flota con proveedor, tipo, dominio y estado
+- Satelitales: usuario y contraseña de plataforma satelital por patente
 
-Si no encontrás el dato, decilo. No inventes información.
+Reglas:
+- Adicionales cubiertos: contar solo los que dicen "ADICIONAL CUBIERTO"
+- Cancelaciones: agrupar por tipo
+- Sala disponible: verificar que no haya reserva que se superponga con el rango horario pedido
+- Si no encontrás el dato, decilo. No inventes información.
 
 DATOS DE LA PLANILLA:
 ${context}`;
