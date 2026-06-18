@@ -785,7 +785,66 @@ function incBuscarOC(oc) {
   }).filter(Boolean).join('\n');
 }
 
-function incRows(limit) {
+// ── Resumen de cargas por tipo y fecha ───────────────────────
+function incResumenTipo(tipo, fechaBuscar) {
+  const tab = findTab(/inc.*horario|horario.*inc|inc\+/i) || findTab(/inc/i);
+  if (!tab || !sheets[tab]) return 'No se encontró la solapa INC + HORARIOS.';
+
+  // tipo: 'CPL' (locales) o 'CPM' (media distancia)
+  const codigo = tipo.toUpperCase();
+
+  // Normalizar fecha buscada a dd/mm/yyyy
+  function normFecha(raw) {
+    const v = formatCell(raw);
+    // puede venir como "01/06/2026 00:00hs" o "01/06/2026"
+    return v.substring(0, 10).trim();
+  }
+
+  // Parsear fecha ingresada — acepta "16/6", "16/06", "16/6/2026", "16/06/2026"
+  function parsearFechaInput(str) {
+    const partes = str.trim().split('/');
+    if (partes.length < 2) return null;
+    const dd   = partes[0].padStart(2,'0');
+    const mm   = partes[1].padStart(2,'0');
+    const yyyy = partes[2] || new Date().getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  const fechaNorm = parsearFechaInput(fechaBuscar);
+  if (!fechaNorm) return `No pude interpretar la fecha "${fechaBuscar}".`;
+
+  const filas = sheets[tab]
+    .filter(r => r.some(c => String(c).trim()))
+    .slice(1) // saltar header
+    .filter(r => {
+      const tipoCelda   = String(r[6] || '').trim().toUpperCase();
+      const fechaCelda  = normFecha(r[2]);
+      const statusCelda = String(r[16] || '').trim().toUpperCase();
+      return tipoCelda === codigo && fechaCelda === fechaNorm && statusCelda !== 'PROGRAMADO';
+    });
+
+  if (!filas.length) {
+    const label = codigo === 'CPL' ? 'locales' : 'media distancia';
+    return `No hay cargas ${label} para el ${fechaNorm}.`;
+  }
+
+  const label = codigo === 'CPL' ? 'LOCALES' : 'MEDIA DISTANCIA';
+  let resp = `Cargas ${label} — ${fechaNorm} (${filas.length} operaciones)\n\n`;
+
+  filas.forEach(r => {
+    const oc       = String(r[1]  || '').trim();
+    const prov     = String(r[0]  || '').trim();
+    const chofer   = String(r[4]  || '').trim();
+    const tractor  = String(r[5]  || '').trim();
+    const travel   = String(r[7]  || '').trim();
+    const horLleg  = formatCell(r[14]);
+    const llegada  = formatCell(r[15]);
+    const status   = String(r[16] || '').trim() || 'En curso';
+    resp += `${oc} | ${prov} | ${chofer} | ${tractor} | ${travel} | ${horLleg || '-'} | ${llegada || '-'} | ${status}\n`;
+  });
+
+  return resp.trim();
+}
   const tab = findTab(/inc.*horario|horario.*inc|inc\+/i) || findTab(/inc/i);
   if (!tab || !sheets[tab]) return '';
   return sheets[tab]
@@ -1084,7 +1143,23 @@ window.sendMsg = async function() {
 
   addMsg('user', text);
 
-  // ── Respuesta directa para búsqueda de OC ────────────────────
+  // ── Cargas locales o media distancia por fecha ───────────────
+  // "locales 16/6" / "media 16/6" / "cargas locales 16/6/2026"
+  const matchTipo = text.match(/(?:cargas?\s+)?(locales?|local|cpl|media\s*distancia|media|cpm)\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i);
+  if (matchTipo) {
+    const tipoRaw = matchTipo[1].trim().toUpperCase();
+    const fecha   = matchTipo[2].trim();
+    const codigo  = /^(LOCAL|LOCALES|CPL)$/.test(tipoRaw) ? 'CPL' : 'CPM';
+    const resumen = incResumenTipo(codigo, fecha);
+    addMsg('bot', resumen);
+    history.push({ role: 'user',      content: text });
+    history.push({ role: 'assistant', content: resumen });
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('listo', 'ok');
+    document.getElementById('chat').scrollTop = 9999;
+    return;
+  }
   // Formatos aceptados:
   // "info 010970-15016"   → INC+HORARIOS (con guión)
   // "info OC 010970-15016" → INC+HORARIOS
