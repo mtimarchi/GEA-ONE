@@ -710,10 +710,27 @@ function sheetRows(tab, limit) {
 const COMEX_COLS    = [0,1,2,3,4,5,6,7,8,9,10,11,12];
 const COMEX_HEADERS = 'Proveedor|OC|Ref. interna ML|Fecha retiro|Turno retiro|Contenedor|Origen|Destino|Devolución vacío|Tipo de carga|Status|Scoring|Observación';
 
-// A=0, C=2, D=3, E=4, F=5, G=6, V=21, W=22, X=23, Y=24, Z=25,
-// AA=26, AB=27, AC=28, AD=29, AE=30, AN=39, AR=43, AS=44
-const INC_COLS = [0,2,3,4,5,6,21,22,23,24,25,26,27,28,29,30,39,43,44];
-const INC_HEADERS = 'Proveedor|OC|Fecha carga|Fecha descarga|Chofer|Tracto|Travel ID|Origen|Destino|Horario citación|Arribo|Horario salida|Salida real|Horario llegada|Llegada real|Status|Observación|Orden de venta|Pedido de compra';
+// ── INC+HORARIOS: columnas exactas ───────────────────────────
+// A=0, B=1, C=2, D=3, E=4, F=5, H=7, I=8, J=9, K=10, L=11,
+// M=12, N=13, O=14, P=15, Q=16, V=21, W=22, X=23
+const INC_COLS    = [0,1,2,3,4,5,7,8,9,10,11,12,13,14,15,16,21,22,23];
+const INC_HEADERS = 'Proveedor|OC|Fecha carga|Fecha descarga|Chofer|Tractor|Travel ID|Origen|Destino|Horario citación|Arribo|Horario salida|Salida|Horario llegada|Llegada|Status|Observaciones|Orden de venta|Pedido de compra';
+const INC_LABELS  = ['Proveedor','OC','Fecha de carga','Fecha de descarga','Chofer','Tractor','Travel ID','Origen','Destino','Horario citación','Arribo','Horario de salida','Salida','Horario de llegada','Llegada','Status','Observaciones','Orden de venta','Pedido de compra'];
+
+// Buscar una OC específica en INC+HORARIOS y formatear como ficha
+function incBuscarOC(oc) {
+  const tab = findTab(/inc.*horario|horario.*inc|inc\+/i) || findTab(/inc/i);
+  if (!tab || !sheets[tab]) return null;
+  const fila = sheets[tab].find(r => String(r[1] || '').trim() === oc.trim());
+  if (!fila) return null;
+  return INC_COLS.map((colIdx, i) => {
+    const val = String(fila[colIdx] || '').trim();
+    const label = INC_LABELS[i];
+    if (label === 'Observaciones') return `${label}: ${val || 'Sin observaciones'}`;
+    if (label === 'Status') return `${label}: ${val || 'En curso'}`;
+    return val ? `${label}: ${val}` : null;
+  }).filter(Boolean).join('\n');
+}
 
 function incRows(limit) {
   const tab = findTab(/inc.*horario|horario.*inc|inc\+/i) || findTab(/inc/i);
@@ -1013,6 +1030,27 @@ window.sendMsg = async function() {
   setStatus('pensando...', 'busy');
 
   addMsg('user', text);
+
+  // ── Respuesta directa para "info OC XXXX" ────────────────────
+  const matchOC = text.match(/info\s+oc\s+(.+)/i);
+  if (matchOC) {
+    const oc     = matchOC[1].trim();
+    const ficha  = incBuscarOC(oc);
+    removeTyping && removeTyping();
+    if (ficha) {
+      addMsg('bot', ficha);
+      history.push({ role: 'user',      content: text });
+      history.push({ role: 'assistant', content: ficha });
+    } else {
+      addMsg('bot', `No encontré la OC ${oc} en INC + HORARIOS.`);
+    }
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('listo', 'ok');
+    document.getElementById('chat').scrollTop = 9999;
+    return;
+  }
+
   addTyping();
 
   try {
