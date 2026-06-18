@@ -744,8 +744,9 @@ function buildContext(pregunta) {
   const esSatelital = /satelital|satélite|usuario.*patente|patente.*usuario|contraseña|clave.*patente/i.test(p);
   const esProspecto = /prospecto|visita|citado|citación.*empresa|empresa.*cita|comercial.*recib|quién.*recib|quien.*recib/i.test(p);
   const esComex     = /comex|contenedor|retiro|turno.*retiro|ref.*interna|ml comex|scoring|devoluc.*vac/i.test(p);
+  const esUbicacion = /ubicaci|direcci|donde.*guarda|donde.*deposito|depósito|donde.*proveedor|maps|google.*map|cómo llego|como llego/i.test(p);
 
-  const nada = ![esSemana,esInc,esTarifa,esCliente,esClausula,esTarifaCli,esSala,esUnidad,esSatelital,esProspecto,esComex].some(Boolean);
+  const nada = ![esSemana,esInc,esTarifa,esCliente,esClausula,esTarifaCli,esSala,esUnidad,esSatelital,esProspecto,esComex,esUbicacion].some(Boolean);
 
   const semanaTab    = findTab(/semana/i);
   const tarifaTab    = findTab(/tarifa.*ml|ml.*tarifa|tarifas ml/i) || findTab(/tarifa/i);
@@ -757,6 +758,7 @@ function buildContext(pregunta) {
   const satelitalTab = findTab(/satelital/i);
   const prospectoTab = findTab(/prospecto/i);
   const comexTab     = findTab(/ml.*comex|comex.*ml/i) || findTab(/comex/i);
+  const ubicacionTab = findTab(/ubicaci/i);
 
   if ((esSemana || nada) && semanaTab) {
     ctx += `=== ${semanaTab} ===\n` + sheetRows(semanaTab, 50) + '\n\n';
@@ -811,6 +813,10 @@ function buildContext(pregunta) {
       .map(r => COMEX_COLS.map(i => String(r[i] || '').trim()).join(' | '))
       .filter(line => line.replace(/\|/g,'').trim())
       .join('\n') + '\n\n';
+  }
+  if (esUbicacion && ubicacionTab) {
+    ctx += `=== ${ubicacionTab} ===\n[Proveedor|Dirección|Link Maps|Referencia|Horario]\n`;
+    ctx += sheetRows(ubicacionTab, 50) + '\n\n';
   }
 
   // Límite duro: máximo 3500 caracteres
@@ -895,6 +901,7 @@ FUENTES DE DATOS DISPONIBLES:
 - Satelitales: usuario y contraseña por patente
 - Prospectos: empresa, contacto, rubro, quien contactó, comercial asignado, fechas y status
 - ML COMEX: columnas → Proveedor | OC | Ref. interna ML | Fecha retiro | Turno retiro | Contenedor | Origen | Destino | Devolución vacío | Tipo de carga | Status | Scoring | Observación
+- Ubicaciones: dirección física y link de Google Maps por proveedor
 
 REGLAS:
 - Si preguntan por una OC específica, devolvé todos los campos de esa fila o solo los pedidos
@@ -905,6 +912,7 @@ REGLAS:
 - Adicionales cubiertos: contar solo "ADICIONAL CUBIERTO"
 - Cancelaciones: agrupar por tipo
 - Sala: verificar superposición de horarios para disponibilidad
+- Ubicaciones: cuando respondas con un link de Maps, pegarlo completo en la respuesta para que sea clickeable.
 - ML COMEX: si preguntan por una OC, devolver todos los campos o solo los pedidos. Status vacío = en curso.
 - Si no encontrás el dato, decilo. No inventes.
 
