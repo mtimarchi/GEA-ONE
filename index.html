@@ -706,9 +706,30 @@ function sheetRows(tab, limit) {
 }
 
 // ── INC+HORARIOS: extraer columnas exactas ────────────────────
-// A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11, M=12
-const COMEX_COLS    = [0,1,2,3,4,5,6,7,8,9,10,11,12];
-const COMEX_HEADERS = 'Proveedor|OC|Ref. interna ML|Fecha retiro|Turno retiro|Contenedor|Origen|Destino|Devolución vacío|Tipo de carga|Status|Scoring|Observación';
+// ── ML COMEX: columnas exactas ────────────────────────────────
+// A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, K=10, M=12
+const COMEX_FICHA_COLS   = [0,1,2,3,4,5,6,7,10,12];
+const COMEX_FICHA_LABELS = ['Proveedor','OC','Ref. interna ML','Fecha retiro','Turno de retiro','Contenedor','Origen','Destino','Status','Observación'];
+
+function comexBuscarOC(oc) {
+  const tab = findTab(/ml.*comex|comex.*ml/i) || findTab(/comex/i);
+  if (!tab || !sheets[tab]) return null;
+
+  const muestras = sheets[tab].slice(0,10).map(r => `"${String(r[1]||'').trim()}"`).join(', ');
+  console.log('COMEX tab:', tab, '| Primeras OCs col B:', muestras, '| Buscando:', `"${oc.trim()}"`);
+
+  const fila = sheets[tab].find(r => String(r[1]||'').trim() === oc.trim());
+  if (!fila) return null;
+
+  return COMEX_FICHA_COLS.map((colIdx, i) => {
+    const raw   = fila[colIdx];
+    const val   = formatCell(raw);
+    const label = COMEX_FICHA_LABELS[i];
+    if (label === 'Observación') return `${label}: ${val || 'Sin observaciones'}`;
+    if (label === 'Status')      return `${label}: ${val || '-'}`;
+    return val ? `${label}: ${val}` : null;
+  }).filter(Boolean).join('\n');
+}
 
 // ── Formatear fechas y horas de Excel ────────────────────────
 function formatCell(val) {
@@ -855,11 +876,11 @@ function buildContext(pregunta) {
     ctx += sheetRows(prospectoTab, 40) + '\n\n';
   }
   if (esComex && comexTab) {
-    ctx += `=== ${comexTab} ===\n[${COMEX_HEADERS}]\n`;
+    ctx += `=== ${comexTab} ===\n[Proveedor|OC|Ref.ML|Fecha retiro|Turno|Contenedor|Origen|Destino|Dev.Vacío|Tipo carga|Status|Scoring|Obs]\n`;
     ctx += sheets[comexTab]
       .filter(r => r.some(c => String(c).trim()))
       .slice(1, 31)
-      .map(r => COMEX_COLS.map(i => String(r[i] || '').trim()).join(' | '))
+      .map(r => [0,1,2,3,4,5,6,7,8,9,10,11,12].map(i => formatCell(r[i]||'')).join(' | '))
       .filter(line => line.replace(/\|/g,'').trim())
       .join('\n') + '\n\n';
   }
@@ -1063,18 +1084,48 @@ window.sendMsg = async function() {
 
   addMsg('user', text);
 
-  // ── Respuesta directa para "info OC XXXX" ────────────────────
-  const matchOC = text.match(/info\s+oc\s+(.+)/i);
-  if (matchOC) {
-    const oc     = matchOC[1].trim();
-    const ficha  = incBuscarOC(oc);
-    removeTyping && removeTyping();
+  // ── Respuesta directa para búsqueda de OC ────────────────────
+  // Formatos aceptados:
+  // "info 010970-15016"   → INC+HORARIOS (con guión)
+  // "info OC 010970-15016" → INC+HORARIOS
+  // "info 09738"          → ML COMEX (solo números)
+  // "info OC 09738"       → ML COMEX
+  const matchInfo = text.match(/^info(?:\s+oc)?\s+(\S+)$/i);
+
+  if (matchInfo) {
+    const oc        = matchInfo[1].trim();
+    const esOCLarga = /\d+-\d+/.test(oc);   // tiene guión → INC+HORARIOS
+    const esOCCorta = /^\d{4,6}$/.test(oc); // solo números → ML COMEX
+
+    let ficha = null;
+    if (esOCLarga) {
+      ficha = incBuscarOC(oc);
+    } else if (esOCCorta) {
+      ficha = comexBuscarOC(oc);
+    }
+
     if (ficha) {
       addMsg('bot', ficha);
       history.push({ role: 'user',      content: text });
       history.push({ role: 'assistant', content: ficha });
+    } else if (esOCLarga || esOCCorta) {
+      const donde = esOCLarga ? 'INC + HORARIOS' : 'ML COMEX';
+      addMsg('bot', `No encontré la OC ${oc} en ${donde}.`);
     } else {
-      addMsg('bot', `No encontré la OC ${oc} en INC + HORARIOS.`);
+      // No reconoce el formato, dejar que lo maneje Groq
+      addTyping();
+      try {
+        const answer = await callGroq(text, history);
+        removeTyping();
+        addMsg('bot', answer);
+        history.push({ role: 'user', content: text });
+        history.push({ role: 'assistant', content: answer });
+        if (history.length > 20) history.splice(0, 2);
+      } catch(e) {
+        removeTyping();
+        addMsg('bot', `Error: ${e.message}`);
+        setStatus('error', 'error');
+      }
     }
     busy = false;
     document.getElementById('sendBtn').disabled = false;
