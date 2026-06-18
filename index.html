@@ -721,6 +721,13 @@ const INC_LABELS  = ['Proveedor','OC','Fecha de carga','Fecha de descarga','Chof
 function incBuscarOC(oc) {
   const tab = findTab(/inc.*horario|horario.*inc|inc\+/i) || findTab(/inc/i);
   if (!tab || !sheets[tab]) return null;
+
+  // Debug: mostrar las primeras OCs que lee
+  const muestras = sheets[tab].slice(0, 10).map(r => `"${String(r[1] || '').trim()}"`).join(', ');
+  console.log('Tab encontrada:', tab);
+  console.log('Primeras OCs en col B:', muestras);
+  console.log('Buscando OC:', `"${oc.trim()}"`);
+
   const fila = sheets[tab].find(r => String(r[1] || '').trim() === oc.trim());
   if (!fila) return null;
   return INC_COLS.map((colIdx, i) => {
