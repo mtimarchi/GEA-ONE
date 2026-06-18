@@ -620,7 +620,7 @@ function readFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const wb = XLSX.read(e.target.result, { type: 'binary', cellText: true, cellDates: true });
+        const wb = XLSX.read(e.target.result, { type: 'binary', cellDates: true, dateNF: 'dd/mm/yyyy' });
         const result = {};
         wb.SheetNames.forEach(name => {
           result[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
@@ -710,7 +710,30 @@ function sheetRows(tab, limit) {
 const COMEX_COLS    = [0,1,2,3,4,5,6,7,8,9,10,11,12];
 const COMEX_HEADERS = 'Proveedor|OC|Ref. interna ML|Fecha retiro|Turno retiro|Contenedor|Origen|Destino|Devolución vacío|Tipo de carga|Status|Scoring|Observación';
 
-// ── INC+HORARIOS: columnas exactas ───────────────────────────
+// ── Formatear fechas y horas de Excel ────────────────────────
+function formatCell(val) {
+  if (val instanceof Date || (typeof val === 'object' && val !== null && val.getTime)) {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    // Fechas con año razonable (>1950)
+    if (year > 1950) {
+      const dd   = String(d.getDate()).padStart(2,'0');
+      const mm   = String(d.getMonth()+1).padStart(2,'0');
+      const yyyy = d.getFullYear();
+      const hh   = String(d.getHours()).padStart(2,'0');
+      const min  = String(d.getMinutes()).padStart(2,'0');
+      // Si tiene hora significativa
+      if (d.getHours() > 0 || d.getMinutes() > 0) return `${dd}/${mm}/${yyyy} ${hh}:${min}hs`;
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    // Fechas con año 1899/1900 = solo hora (así guarda Excel los horarios)
+    const hh  = String(d.getUTCHours()).padStart(2,'0');
+    const min = String(d.getUTCMinutes()).padStart(2,'0');
+    return `${hh}:${min}hs`;
+  }
+  return String(val ?? '').trim();
+}
 // A=0, B=1, C=2, D=3, E=4, F=5, H=7, I=8, J=9, K=10, L=11,
 // M=12, N=13, O=14, P=15, Q=16, V=21, W=22, X=23
 const INC_COLS    = [0,1,2,3,4,5,7,8,9,10,11,12,13,14,15,16,21,22,23];
@@ -731,10 +754,12 @@ function incBuscarOC(oc) {
   const fila = sheets[tab].find(r => String(r[1] || '').trim() === oc.trim());
   if (!fila) return null;
   return INC_COLS.map((colIdx, i) => {
-    const val = String(fila[colIdx] || '').trim();
+    const raw   = fila[colIdx];
+    const val   = formatCell(raw);
     const label = INC_LABELS[i];
     if (label === 'Observaciones') return `${label}: ${val || 'Sin observaciones'}`;
-    if (label === 'Status') return `${label}: ${val || 'En curso'}`;
+    if (label === 'Status')        return `${label}: ${val || 'En curso'}`;
+    if (label === 'Orden de venta' || label === 'Pedido de compra') return `${label}: ${val || '-'}`;
     return val ? `${label}: ${val}` : null;
   }).filter(Boolean).join('\n');
 }
