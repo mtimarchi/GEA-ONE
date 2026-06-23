@@ -966,6 +966,7 @@ function incResumenTipo(tipo, fechaBuscar) {
 
   return resp.trim();
 }
+function incRows(limit) {
   const tab = findTab(/inc.*horario|horario.*inc|inc\+/i) || findTab(/inc/i);
   if (!tab || !sheets[tab]) return '';
   return sheets[tab]
