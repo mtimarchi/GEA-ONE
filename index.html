@@ -785,6 +785,122 @@ function incBuscarOC(oc) {
   }).filter(Boolean).join('\n');
 }
 
+// ── COTIZACIONES INTERNACIONALES: búsqueda por referencia ─────
+// A=0, D=3 Periodo, E=4 Status, F=5 Referencia, G=6 Cliente,
+// H=7 Origen, I=8 Destino, J=9 Proveedor, K=10 Tipo unidad,
+// L=11 Tipo carga, N=13 Compra, O=14 Venta, P=15 Profit
+function buscarCotizacionInt(ref) {
+  const tab = findTab(/cotizaciones?\s*internacionales?/i);
+  if (!tab || !sheets[tab]) return null; // null = solapa no existe
+
+  const fila = sheets[tab]
+    .filter(r => r.some(c => String(c).trim()))
+    .find(r => String(r[5] || '').trim().toUpperCase() === ref.toUpperCase());
+
+  if (!fila) return null; // null = no encontrada
+
+  return [
+    `Referencia: ${String(fila[5]  || '').trim()}`,
+    `Status: ${String(fila[4]      || '').trim() || '-'}`,
+    `Periodo de solicitud: ${formatCell(fila[3]) || '-'}`,
+    `Cliente: ${String(fila[6]     || '').trim() || '-'}`,
+    `Origen: ${String(fila[7]      || '').trim() || '-'}`,
+    `Destino: ${String(fila[8]     || '').trim() || '-'}`,
+    `Proveedor: ${String(fila[9]   || '').trim() || '-'}`,
+    `Tipo de unidad: ${String(fila[10] || '').trim() || '-'}`,
+    `Tipo de carga: ${String(fila[11]  || '').trim() || '-'}`,
+    `Compra: ${String(fila[13]     || '').trim() || '-'}`,
+    `Venta: ${String(fila[14]      || '').trim() || '-'}`,
+    `Profit: ${String(fila[15]     || '').trim() || '-'}`,
+    `Rentabilidad: ${String(fila[16] || '').trim() || '-'}`
+  ].join('\n');
+}
+
+// ── CARGAS INTERNACIONALES: búsqueda por referencia ──────────
+// A=0 Tipo, B=1 Tipo servicio, D=3 Fecha solicitud, E=4 Status,
+// F=5 Referencia, G=6 Cliente, H=7 Origen, I=8 Destino,
+// J=9 Pick up, K=10 ETA destino, L=11 Observaciones
+function buscarCargaInt(ref) {
+  const tab = findTab(/cargas?\s*internacionales?/i);
+  if (!tab || !sheets[tab]) return 'No se encontró la solapa Cargas Internacionales.';
+
+  const fila = sheets[tab]
+    .filter(r => r.some(c => String(c).trim()))
+    .find(r => String(r[5] || '').trim().toUpperCase() === ref.toUpperCase());
+
+  if (!fila) return `No encontré la referencia ${ref.toUpperCase()} en Cargas Internacionales.`;
+
+  const obs = String(fila[11] || '').trim();
+  return [
+    `Referencia: ${String(fila[5]  || '').trim()}`,
+    `Tipo: ${String(fila[0]        || '').trim() || '-'}`,
+    `Tipo de servicio: ${String(fila[1] || '').trim() || '-'}`,
+    `Fecha de solicitud: ${formatCell(fila[3]) || '-'}`,
+    `Status: ${String(fila[4]      || '').trim() || '-'}`,
+    `Cliente: ${String(fila[6]     || '').trim() || '-'}`,
+    `Origen: ${String(fila[7]      || '').trim() || '-'}`,
+    `Destino: ${String(fila[8]     || '').trim() || '-'}`,
+    `Pick up: ${formatCell(fila[9]) || '-'}`,
+    `ETA destino: ${formatCell(fila[10]) || '-'}`,
+    `Observaciones: ${obs || 'Sin observaciones'}`
+  ].join('\n');
+}
+
+// ── TARIFARIO: búsqueda por cliente y destino ─────────────────
+// B=1 Cliente, C=2 Destino, E=4 Compra, F=5 GA, I=8 Venta, K=10 Rentabilidad
+function buscarTarifario(cliente, destino) {
+  const tab = findTab(/tarifario/i) || findTab(/tarifa/i);
+  if (!tab || !sheets[tab]) return 'No se encontró la solapa Tarifario.';
+
+  const filas = sheets[tab]
+    .filter(r => r.some(c => String(c).trim()))
+    .slice(1)
+    .filter(r => {
+      const cli  = String(r[1] || '').trim().toUpperCase();
+      const dest = String(r[2] || '').trim().toUpperCase();
+      const matchCli  = cli.includes(cliente.toUpperCase());
+      const matchDest = destino ? dest.includes(destino.toUpperCase()) : true;
+      return matchCli && matchDest;
+    });
+
+  if (!filas.length) {
+    const msg = destino
+      ? `No encontré tarifas para ${cliente} a ${destino}.`
+      : `No encontré tarifas para ${cliente}.`;
+    return msg;
+  }
+
+  // Con destino → ficha completa
+  if (destino && filas.length === 1) {
+    const r = filas[0];
+    const ga = String(r[5] || '').trim();
+    return [
+      `Cliente: ${String(r[1]||'').trim()}`,
+      `Destino: ${String(r[2]||'').trim()}`,
+      `Compra: ${String(r[4]||'').trim() || '-'}`,
+      `GA: ${ga || '-'}`,
+      `Venta: ${String(r[8]||'').trim() || '-'}`,
+      `Rentabilidad: ${String(r[10]||'').trim() || '-'}`
+    ].join('\n');
+  }
+
+  // Sin destino o múltiples resultados → listado resumido
+  let resp = destino
+    ? `Tarifas ${filas[0] ? String(filas[0][1]||'').trim() : cliente} → ${destino} (${filas.length} registros)\n\n`
+    : `Tarifas ${cliente} (${filas.length} destinos)\n\n`;
+
+  filas.forEach(r => {
+    const cli  = String(r[1] ||'').trim();
+    const dest = String(r[2] ||'').trim();
+    const comp = String(r[4] ||'').trim() || '-';
+    const vent = String(r[8] ||'').trim() || '-';
+    const rent = String(r[10]||'').trim() || '-';
+    resp += `${cli} | ${dest} | Compra: ${comp} | Venta: ${vent} | Rent: ${rent}\n`;
+  });
+
+  return resp.trim();
+}
+
 // ── Resumen de cargas por tipo y fecha ───────────────────────
 function incResumenTipo(tipo, fechaBuscar) {
   const tab = findTab(/inc.*horario|horario.*inc|inc\+/i) || findTab(/inc/i);
@@ -874,11 +990,12 @@ function buildContext(pregunta) {
   const esProspecto = /prospecto|visita|citado|citación.*empresa|empresa.*cita|comercial.*recib|quién.*recib|quien.*recib/i.test(p);
   const esComex     = /comex|contenedor|retiro|turno.*retiro|ref.*interna|ml comex|scoring|devoluc.*vac/i.test(p);
   const esUbicacion = /ubicaci|direcci|donde.*guarda|donde.*deposito|depósito|donde.*proveedor|maps|google.*map|cómo llego|como llego/i.test(p);
+  const esIntl      = /internacional|adr|com\b|dep\b|carga.*int|int.*carga/i.test(p);
 
-  const nada = ![esSemana,esInc,esTarifa,esCliente,esClausula,esTarifaCli,esSala,esUnidad,esSatelital,esProspecto,esComex,esUbicacion].some(Boolean);
+  const nada = ![esSemana,esInc,esTarifa,esCliente,esClausula,esTarifaCli,esSala,esUnidad,esSatelital,esProspecto,esComex,esUbicacion,esIntl].some(Boolean);
 
   const semanaTab    = findTab(/semana/i);
-  const tarifaTab    = findTab(/tarifa.*ml|ml.*tarifa|tarifas ml/i) || findTab(/tarifa/i);
+  const tarifaTab    = findTab(/tarifario/i) || findTab(/tarifa.*ml|ml.*tarifa|tarifas ml/i) || findTab(/tarifa/i);
   const clienteTab   = findTab(/cliente/i);
   const clausulaTab  = findTab(/clausula|cláusula|exenci/i);
   const tarifaCliTab = findTab(/actualizac.*tarifa|tarifa.*actualizac/i);
@@ -888,6 +1005,7 @@ function buildContext(pregunta) {
   const prospectoTab = findTab(/prospecto/i);
   const comexTab     = findTab(/ml.*comex|comex.*ml/i) || findTab(/comex/i);
   const ubicacionTab = findTab(/ubicaci/i);
+  const intlTab      = findTab(/cargas?\s*internacionales?/i);
 
   if ((esSemana || nada) && semanaTab) {
     ctx += `=== ${semanaTab} ===\n` + sheetRows(semanaTab, 50) + '\n\n';
@@ -946,6 +1064,10 @@ function buildContext(pregunta) {
   if (esUbicacion && ubicacionTab) {
     ctx += `=== ${ubicacionTab} ===\n[Proveedor|Dirección|Link Maps|Referencia|Horario]\n`;
     ctx += sheetRows(ubicacionTab, 50) + '\n\n';
+  }
+  if (esIntl && intlTab) {
+    ctx += `=== ${intlTab} ===\n[Tipo|Tipo servicio|Fecha solicitud|Status|Referencia|Cliente|Origen|Destino|Pick up|ETA|Obs]\n`;
+    ctx += sheetRows(intlTab, 30) + '\n\n';
   }
 
   // Límite duro: máximo 3500 caracteres
@@ -1143,7 +1265,46 @@ window.sendMsg = async function() {
 
   addMsg('user', text);
 
-  // ── Cargas locales o media distancia por fecha ───────────────
+  // ── Cargas/Cotizaciones internacionales: ADR533 / COM123 / DEP456 ──
+  const matchIntl = text.match(/^(ADR|COM|DEP)\s*(\d{1,4})$/i);
+  if (matchIntl) {
+    const ref = (matchIntl[1] + matchIntl[2]).toUpperCase();
+
+    // 1. Buscar en Cargas Internacionales
+    let resp = buscarCargaInt(ref);
+
+    // 2. Si no la encuentra, buscar en Cotizaciones Internacionales
+    if (resp.startsWith('No encontré')) {
+      const cot = buscarCotizacionInt(ref);
+      if (cot) {
+        resp = `(Cotización — aún no convertida en carga)\n\n${cot}`;
+      }
+      // Si tampoco está en cotizaciones, mantener el mensaje de no encontrado
+    }
+
+    addMsg('bot', resp);
+    history.push({ role: 'user',      content: text });
+    history.push({ role: 'assistant', content: resp });
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('listo', 'ok');
+    document.getElementById('chat').scrollTop = 9999;
+    return;
+  }
+  const matchTarifa = text.match(/^tarifas?\s+(\w+)(?:\s+a\s+(.+))?$/i);
+  if (matchTarifa) {
+    const cliente = matchTarifa[1].trim();
+    const destino = matchTarifa[2] ? matchTarifa[2].trim() : null;
+    const resp    = buscarTarifario(cliente, destino);
+    addMsg('bot', resp);
+    history.push({ role: 'user',      content: text });
+    history.push({ role: 'assistant', content: resp });
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('listo', 'ok');
+    document.getElementById('chat').scrollTop = 9999;
+    return;
+  }
   // "locales 16/6" / "media 16/6" / "cargas locales 16/6/2026"
   const matchTipo = text.match(/(?:cargas?\s+)?(locales?|local|cpl|media\s*distancia|media|cpm)\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i);
   if (matchTipo) {
