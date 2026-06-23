@@ -197,12 +197,7 @@ header {
 }
 
 #fileInput { 
-  position: absolute;
-  width: 100%; height: 100%;
-  top: 0; left: 0;
-  opacity: 0;
-  cursor: pointer;
-  z-index: 2;
+  display: none;
 }
 
 #fileStatus {
@@ -538,10 +533,13 @@ header {
         <h3>Cargar la planilla de Paquetería</h3>
         <p>Descargá el Google Sheet como Excel y cargalo acá.</p>
         <div id="dropZone">
-          <p>📂 Hacé click o arrastrá el archivo</p>
+          <p>📂 Arrastrá el archivo acá</p>
           <p class="hint">.xlsx · .xls · .csv</p>
           <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
         </div>
+        <button onclick="document.getElementById('fileInput').click()" style="margin-top:10px;width:100%;background:rgba(197,209,86,0.12);border:1px solid rgba(197,209,86,0.4);border-radius:8px;padding:9px;color:var(--lime);font-family:'Syne',sans-serif;font-size:13px;cursor:pointer;">
+          📁 Seleccionar archivo
+        </button>
         <div id="fileStatus"></div>
       </div>
     </div>
