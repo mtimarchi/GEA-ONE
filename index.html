@@ -176,6 +176,7 @@ header {
   transition: all 0.2s;
   margin-top: 10px;
   background: rgba(197,209,86,0.03);
+  position: relative;
 }
 
 #dropZone:hover, #dropZone.drag-over {
@@ -195,7 +196,14 @@ header {
   margin-top: 4px;
 }
 
-#fileInput { display: none; }
+#fileInput { 
+  position: absolute;
+  width: 100%; height: 100%;
+  top: 0; left: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
 
 #fileStatus {
   margin-top: 8px;
@@ -638,7 +646,6 @@ const dropZone   = document.getElementById('dropZone');
 const fileInput  = document.getElementById('fileInput');
 const fileStatus = document.getElementById('fileStatus');
 
-dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', e => {
